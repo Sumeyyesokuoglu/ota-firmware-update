@@ -33,6 +33,13 @@ typedef struct {
   uint32_t metadata_crc32;
 } ota_boot_metadata_t;
 
+typedef struct {
+  uint32_t offset;
+  uint16_t length;
+  uint16_t checksum;
+  uint8_t payload[64];
+} ota_chunk_t;
+
 uint32_t ota_crc32_buffer(const void *buf, unsigned len);
 bool ota_metadata_crc_is_valid(const ota_boot_metadata_t *metadata);
 bool ota_metadata_mark_verified(ota_boot_metadata_t *metadata,

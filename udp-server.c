@@ -31,6 +31,8 @@
 #include "net/routing/routing.h"
 #include "net/netstack.h"
 #include "net/ipv6/simple-udp.h"
+#include "ota-metadata.h"
+#include <inttypes.h>
 
 #include "sys/log.h"
 #define LOG_MODULE "App"
@@ -54,9 +56,21 @@ udp_rx_callback(struct simple_udp_connection *c,
          const uint8_t *data,
          uint16_t datalen)
 {
-  LOG_INFO("Received request '%.*s' from ", datalen, (char *) data);
-  LOG_INFO_6ADDR(sender_addr);
-  LOG_INFO_("\n");
+  if(datalen >= sizeof(ota_chunk_t)) {
+    const ota_chunk_t *chunk = (const ota_chunk_t *)data;
+    LOG_INFO("Received OTA chunk: offset=%" PRIu32 ", length=%u, checksum=%u from ",
+             chunk->offset, chunk->length, chunk->checksum);
+    LOG_INFO_6ADDR(sender_addr);
+    LOG_INFO_("\n");
+    
+    /* TODO: Gelen paketin checksum dogrulamasi yapilacak */
+    /* TODO: chunk->payload verisi kalici depolamaya (diske) yazilacak */
+  } else {
+    LOG_INFO("Received generic request '%.*s' from ", datalen, (char *) data);
+    LOG_INFO_6ADDR(sender_addr);
+    LOG_INFO_("\n");
+  }
+
 #if WITH_SERVER_REPLY
   /* send back the same string to the client as an echo reply */
   LOG_INFO("Sending response.\n");
