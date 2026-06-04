@@ -33,6 +33,7 @@
 #include "net/ipv6/simple-udp.h"
 #include "ota-metadata.h"
 #include <inttypes.h>
+#include "cfs/cfs.h"
 
 #include "sys/log.h"
 #define LOG_MODULE "App"
@@ -41,6 +42,25 @@
 #define WITH_SERVER_REPLY  1
 #define UDP_CLIENT_PORT	8765
 #define UDP_SERVER_PORT	5678
+
+#define FIRMWARE_FILENAME "firmware.bin"
+
+typedef struct {
+  int fd;                  /* Dosya tanımlayıcı (CFS için) */
+  uint32_t total_size;     /* Firmware toplam boyutu */
+  uint32_t current_offset; /* Okunacak/yazılacak güncel konum */
+} firmware_context_t;
+
+static firmware_context_t fw_ctx;
+
+static void init_firmware_context(void)
+{
+  cfs_remove(FIRMWARE_FILENAME);
+  fw_ctx.fd = -1;
+  fw_ctx.total_size = 0;
+  fw_ctx.current_offset = 0;
+  LOG_INFO("Firmware context initialized, ready for new firmware.\n");
+}
 
 static struct simple_udp_connection udp_conn;
 
@@ -64,7 +84,21 @@ udp_rx_callback(struct simple_udp_connection *c,
     LOG_INFO_("\n");
     
     /* TODO: Gelen paketin checksum dogrulamasi yapilacak */
-    /* TODO: chunk->payload verisi kalici depolamaya (diske) yazilacak */
+    
+    /* Gelen paketi kalıcı depolamaya (diske) yaz */
+    fw_ctx.fd = cfs_open(FIRMWARE_FILENAME, CFS_WRITE);
+    if(fw_ctx.fd >= 0) {
+      if(cfs_seek(fw_ctx.fd, chunk->offset, CFS_SEEK_SET) != (cfs_offset_t)-1) {
+        cfs_write(fw_ctx.fd, chunk->payload, chunk->length);
+        fw_ctx.current_offset += chunk->length;
+        LOG_INFO("Wrote %u bytes to CFS at offset %" PRIu32 ".\n", chunk->length, chunk->offset);
+      } else {
+        LOG_ERR("Failed to seek to offset %" PRIu32 " in CFS.\n", chunk->offset);
+      }
+      cfs_close(fw_ctx.fd);
+    } else {
+      LOG_ERR("Failed to open CFS file %s for writing.\n", FIRMWARE_FILENAME);
+    }
   } else {
     LOG_INFO("Received generic request '%.*s' from ", datalen, (char *) data);
     LOG_INFO_6ADDR(sender_addr);
@@ -81,6 +115,8 @@ udp_rx_callback(struct simple_udp_connection *c,
 PROCESS_THREAD(udp_server_process, ev, data)
 {
   PROCESS_BEGIN();
+
+  init_firmware_context();
 
   /* Initialize DAG root */
   NETSTACK_ROUTING.root_start();
