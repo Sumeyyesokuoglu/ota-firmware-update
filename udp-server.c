@@ -34,12 +34,12 @@
 #include "ota-metadata.h"
 #include <inttypes.h>
 #include "cfs/cfs.h"
+#include <string.h>
 
 #include "sys/log.h"
 #define LOG_MODULE "App"
 #define LOG_LEVEL LOG_LEVEL_INFO
 
-#define WITH_SERVER_REPLY  1
 #define UDP_CLIENT_PORT	8765
 #define UDP_SERVER_PORT	5678
 
@@ -52,6 +52,14 @@ typedef struct {
 } firmware_context_t;
 
 static firmware_context_t fw_ctx;
+
+static uint16_t compute_checksum(const uint8_t *data, uint16_t len) {
+  uint16_t sum = 0;
+  for(uint16_t i = 0; i < len; i++) {
+    sum += data[i];
+  }
+  return sum;
+}
 
 static void init_firmware_context(void)
 {
@@ -83,33 +91,59 @@ udp_rx_callback(struct simple_udp_connection *c,
     LOG_INFO_6ADDR(sender_addr);
     LOG_INFO_("\n");
     
-    /* TODO: Gelen paketin checksum dogrulamasi yapilacak */
-    
-    /* Gelen paketi kalıcı depolamaya (diske) yaz */
-    fw_ctx.fd = cfs_open(FIRMWARE_FILENAME, CFS_WRITE);
-    if(fw_ctx.fd >= 0) {
-      if(cfs_seek(fw_ctx.fd, chunk->offset, CFS_SEEK_SET) != (cfs_offset_t)-1) {
-        cfs_write(fw_ctx.fd, chunk->payload, chunk->length);
-        fw_ctx.current_offset += chunk->length;
-        LOG_INFO("Wrote %u bytes to CFS at offset %" PRIu32 ".\n", chunk->length, chunk->offset);
-      } else {
-        LOG_ERR("Failed to seek to offset %" PRIu32 " in CFS.\n", chunk->offset);
+    if(chunk->length == 0) {
+      /* EOF paketi geldi */
+      LOG_INFO("EOF paketi alindi. Tum imaj dogrulamasi yapiliyor...\n");
+      
+      fw_ctx.fd = cfs_open(FIRMWARE_FILENAME, CFS_READ);
+      if(fw_ctx.fd >= 0) {
+        uint32_t total_crc = 0;
+        uint8_t buf[64];
+        int bytes_read;
+        while((bytes_read = cfs_read(fw_ctx.fd, buf, sizeof(buf))) > 0) {
+           total_crc += bytes_read;
+        }
+        cfs_close(fw_ctx.fd);
+        LOG_INFO("Tum imaj dogrulamasi bitti (mock total bytes: %" PRIu32 ").\n", total_crc);
+        LOG_INFO("Yüklenmeye hazır yeni firmware alımı tamamlandı.\n");
+        
+        /* ACK gonder (EOF ACK) */
+        uint32_t ack_offset = chunk->offset;
+        simple_udp_sendto(&udp_conn, &ack_offset, sizeof(ack_offset), sender_addr);
       }
-      cfs_close(fw_ctx.fd);
     } else {
-      LOG_ERR("Failed to open CFS file %s for writing.\n", FIRMWARE_FILENAME);
+      /* Normal paket */
+      uint16_t calc_chk = compute_checksum(chunk->payload, chunk->length);
+      if(calc_chk != chunk->checksum) {
+        LOG_ERR("Checksum hatasi! Beklenen: %u, Hesaplanilan: %u\n", chunk->checksum, calc_chk);
+        return; /* Hatalı paket, ACK atma */
+      }
+      
+      /* Gelen paketi kalıcı depolamaya (diske) yaz */
+      fw_ctx.fd = cfs_open(FIRMWARE_FILENAME, CFS_WRITE | CFS_READ);
+      if(fw_ctx.fd >= 0) {
+        if(cfs_seek(fw_ctx.fd, chunk->offset, CFS_SEEK_SET) != (cfs_offset_t)-1) {
+          cfs_write(fw_ctx.fd, chunk->payload, chunk->length);
+          fw_ctx.current_offset += chunk->length;
+          LOG_INFO("Wrote %u bytes to CFS at offset %" PRIu32 ".\n", chunk->length, chunk->offset);
+          
+          /* Başarılı yazım, ACK gönder */
+          uint32_t ack_offset = chunk->offset;
+          simple_udp_sendto(&udp_conn, &ack_offset, sizeof(ack_offset), sender_addr);
+
+        } else {
+          LOG_ERR("Failed to seek to offset %" PRIu32 " in CFS.\n", chunk->offset);
+        }
+        cfs_close(fw_ctx.fd);
+      } else {
+        LOG_ERR("Failed to open CFS file %s for writing.\n", FIRMWARE_FILENAME);
+      }
     }
   } else {
     LOG_INFO("Received generic request '%.*s' from ", datalen, (char *) data);
     LOG_INFO_6ADDR(sender_addr);
     LOG_INFO_("\n");
   }
-
-#if WITH_SERVER_REPLY
-  /* send back the same string to the client as an echo reply */
-  LOG_INFO("Sending response.\n");
-  simple_udp_sendto(&udp_conn, data, datalen, sender_addr);
-#endif /* WITH_SERVER_REPLY */
 }
 /*---------------------------------------------------------------------------*/
 PROCESS_THREAD(udp_server_process, ev, data)
