@@ -1,7 +1,7 @@
 #include "ota-metadata.h"
 
-static uint32_t
-crc32_update(uint32_t crc, const void *buf, unsigned len)
+uint32_t
+ota_crc32_update(uint32_t crc, const void *buf, unsigned len)
 {
   const uint8_t *p = (const uint8_t *)buf;
   unsigned i;
@@ -24,7 +24,7 @@ crc32_update(uint32_t crc, const void *buf, unsigned len)
 uint32_t
 ota_crc32_buffer(const void *buf, unsigned len)
 {
-  return crc32_update(0u, buf, len);
+  return ota_crc32_update(0u, buf, len);
 }
 
 static void

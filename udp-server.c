@@ -95,17 +95,25 @@ udp_rx_callback(struct simple_udp_connection *c,
       /* EOF paketi geldi */
       LOG_INFO("EOF paketi alindi. Tum imaj dogrulamasi yapiliyor...\n");
       
+      uint32_t expected_crc;
+      memcpy(&expected_crc, chunk->payload, sizeof(uint32_t));
+      
       fw_ctx.fd = cfs_open(FIRMWARE_FILENAME, CFS_READ);
       if(fw_ctx.fd >= 0) {
-        uint32_t total_crc = 0;
+        uint32_t calc_crc = 0;
         uint8_t buf[64];
         int bytes_read;
         while((bytes_read = cfs_read(fw_ctx.fd, buf, sizeof(buf))) > 0) {
-           total_crc += bytes_read;
+           calc_crc = ota_crc32_update(calc_crc, buf, bytes_read);
         }
         cfs_close(fw_ctx.fd);
-        LOG_INFO("Tum imaj dogrulamasi bitti (mock total bytes: %" PRIu32 ").\n", total_crc);
-        LOG_INFO("Yüklenmeye hazır yeni firmware alımı tamamlandı.\n");
+        
+        if(calc_crc == expected_crc) {
+          LOG_INFO("Tum imaj dogrulamasi BASARILI (CRC32: 0x%08" PRIX32 ").\n", calc_crc);
+          LOG_INFO("Yüklenmeye hazır yeni firmware alımı tamamlandı.\n");
+        } else {
+          LOG_ERR("Tum imaj dogrulamasi BASARISIZ! Beklenen: 0x%08" PRIX32 ", Hesaplanan: 0x%08" PRIX32 "\n", expected_crc, calc_crc);
+        }
         
         /* ACK gonder (EOF ACK) */
         uint32_t ack_offset = chunk->offset;

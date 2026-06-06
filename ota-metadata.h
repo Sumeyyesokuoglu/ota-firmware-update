@@ -41,6 +41,7 @@ typedef struct {
 } ota_chunk_t;
 
 uint32_t ota_crc32_buffer(const void *buf, unsigned len);
+uint32_t ota_crc32_update(uint32_t crc, const void *buf, unsigned len);
 bool ota_metadata_crc_is_valid(const ota_boot_metadata_t *metadata);
 bool ota_metadata_mark_verified(ota_boot_metadata_t *metadata,
                                 uint32_t slot,

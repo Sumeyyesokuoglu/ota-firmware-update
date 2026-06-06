@@ -120,14 +120,17 @@ PROCESS_THREAD(udp_client_process, ev, data)
 
           simple_udp_sendto(&udp_conn, &chunk, sizeof(ota_chunk_t), &dest_ipaddr);
         } else if(!eof_sent) {
-          /* Dosya aktarımı bitti, EOF paketi gönder */
+          /* Dosya aktarımı bitti, tam dosya CRC32'sini hesapla ve EOF paketine ekle */
           ota_chunk_t eof_chunk;
           memset(&eof_chunk, 0, sizeof(eof_chunk));
           eof_chunk.offset = firmware_length;
           eof_chunk.length = 0; /* EOF sinyali */
           eof_chunk.checksum = 0;
+          
+          uint32_t full_crc = ota_crc32_buffer(firmware_data, firmware_length);
+          memcpy(eof_chunk.payload, &full_crc, sizeof(uint32_t));
 
-          LOG_INFO("Sending EOF chunk to ");
+          LOG_INFO("Sending EOF chunk with CRC32 0x%08\" PRIX32 \" to ", full_crc);
           LOG_INFO_6ADDR(&dest_ipaddr);
           LOG_INFO_("\n");
 
