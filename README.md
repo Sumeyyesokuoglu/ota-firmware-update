@@ -6,7 +6,6 @@ Sistemin Cooja ortamındaki simülasyonunu ve çalışmasını detaylıca anlatt
 
 https://youtu.be/uNWd9F8DIWU
 
-*(Not: Videoyu hazırlarken grup üyeleriyle meet üzerinden toplanmayı, ekran kaydı alırken kameralarınızın açık olmasını, herkesin kendi bölümünü anlatmasını ve kullanılan hash/CRC algoritmalarından kısaca teorik olarak bahsetmeyi unutmayın.)*
 
 ## 2. Proje Dizini
 
